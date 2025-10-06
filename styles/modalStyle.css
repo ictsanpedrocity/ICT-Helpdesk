@@ -1,0 +1,154 @@
+.modal-overlay {
+    position: fixed;   /* <--- add this */
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0,0,0,0.6);
+    display: flex;
+    justify-content: center;
+    align-items: center;   /* center vertically too */
+    visibility: hidden;
+    opacity: 0;
+    transition: 0.3s ease;
+    z-index: 1000;
+}
+
+.modal-overlay.active {
+    visibility: visible;
+    opacity: 1;
+}
+
+.modal {
+    background: #fff;
+    border-radius: 12px;
+    width: 450px;
+    max-width: 95%;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    position: relative;
+    animation: slideDown 0.3s ease;
+    overflow: hidden; /* <-- keeps content neat */
+}
+
+@keyframes slideDown {
+    from { transform: translateY(-30px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+/* Header */
+.modal-header {
+    flex: 0 0 auto;
+    padding: 16px 20px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    text-align: center;
+    flex: 1;
+}
+
+.modal .close-btn {
+    font-size: 22px;
+    cursor: pointer;
+    color: #555;
+    margin-left: auto;
+}
+
+/* Body */
+.modal-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+.modal-body label {
+    display: block;
+    margin: 6px 0 4px;
+    font-weight: 500;
+}
+.modal-body form {
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-body input,
+.modal-body textarea,
+.modal-body select {
+    width: 100%;     /* ensure not squished */
+    box-sizing: border-box;  /* include padding in width */
+    padding: 8px;
+    margin-bottom: 12px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    font-size: 14px;
+}
+
+.modal-body textarea {
+    min-height: 80px;
+    resize: vertical;
+}
+
+/* Footer */
+.modal-footer {
+    flex: 0 0 auto;
+    padding: 12px 20px;
+    border-top: 1px solid #eee;
+    text-align: right;
+}
+
+.modal-footer button,
+.modal-footer .btn-back {
+    padding: 10px 15px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-left: 8px;
+}
+
+.modal-footer button {
+    background: #28a745;
+    color: #fff;
+}
+
+.modal-footer .btn-back {
+    background: #ccc;
+    color: #000;
+}
+
+/* Grid inside modal */
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+}
+
+.form-grid input,
+.form-grid select,
+.form-grid textarea {
+    width: 100%;
+}
+
+
+.form-grid label {
+    margin-top: 6px;
+    display: block;
+    font-weight: 500;
+}
+
+.form-actions {
+    margin-top: 15px;
+    text-align: right;
+}
+.ticket-number {
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 10px;
+    color: #333;
+}

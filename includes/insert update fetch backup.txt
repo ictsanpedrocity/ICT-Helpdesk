@@ -1,0 +1,168 @@
+<?php
+include 'db.php';
+
+// Insert new ticket
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_ticket'])) {
+    $title = $conn->real_escape_string($_POST['title']);
+    $concern_type = $conn->real_escape_string($_POST['concern']);
+    $description = $conn->real_escape_string($_POST['description']);
+
+    $user_id = $_SESSION['user_id'];        // numeric ID for DB
+    $username = $_SESSION['username'];      // keep for ticket_number
+
+    // Date format mmddyy
+    $datePart = date("mdy");
+    $today = date("Y-m-d");
+
+    // Count tickets today by this user
+    $res = $conn->query("SELECT COUNT(*) as cnt 
+                         FROM tickets 
+                         WHERE DATE(created_at) = '$today' 
+                           AND created_by = '$user_id'");
+    $row = $res->fetch_assoc();
+    $seq = str_pad($row['cnt'] + 1, 3, "0", STR_PAD_LEFT); 
+
+    // Ticket number
+    $ticket_number = $username . "-" . $datePart . "-" . $seq;
+
+    // Insert ticket
+    $sql_ticket = "INSERT INTO tickets (ticket_number, title, concern_type, description, created_by) 
+                   VALUES ('$ticket_number', '$title', '$concern_type', '$description', '$user_id')";
+
+    if ($conn->query($sql_ticket)) {
+        // ✅ Check if concern type is DepEd related
+        if ($concern_type === "Deped Account Creation" || $concern_type === "Deped Account Reset Password") {
+            $school_id   = $conn->real_escape_string($_POST['school_id']);
+            $first_name  = $conn->real_escape_string($_POST['first_name']);
+            $last_name   = $conn->real_escape_string($_POST['last_name']);
+            $designation = $conn->real_escape_string($_POST['designation']);
+            $alt_email   = isset($_POST['alt_email']) ? $conn->real_escape_string($_POST['alt_email']) : '';
+            $deped_email = $conn->real_escape_string($_POST['deped_email']);
+            $new_reset   = $conn->real_escape_string($_POST['new_reset']); // "New Account" or "Reset Account"
+            $contact_num = isset($_POST['contact_num']) ? $conn->real_escape_string($_POST['contact_num']) : '';
+
+            // Insert into google_accounts
+            $sql_google = "INSERT INTO google_accounts 
+                (school_id, first_name, last_name, designation, alt_email, deped_email, new_reset, contact_num) 
+                VALUES ('$school_id', '$first_name', '$last_name', '$designation', '$alt_email', '$deped_email', '$new_reset', '$contact_num')";
+
+            if (!$conn->query($sql_google)) {
+                error_log('Google Account Insert Failed: ' . $conn->error);
+            }
+        }
+
+        // Redirect after success
+        header("Location: index.php?msg=TicketCreated");
+        exit;
+    } else {
+        echo "Error inserting ticket: " . $conn->error;
+    }
+}
+
+// Fetch tickets
+$result = $conn->query("SELECT * FROM tickets ORDER BY created_at DESC");
+// Update ticket
+if (isset($_POST['edit_ticket'])) {
+    $id = intval($_POST['id']);
+
+    if ($_SESSION['role'] === 'admin') {
+        $status = $conn->real_escape_string($_POST['status']);
+        $assigned_to = $conn->real_escape_string($_POST['assigned_to']); 
+        $sql = "UPDATE tickets 
+                SET status='$status', assigned_to='$assigned_to' 
+                WHERE id=$id";
+    } else {
+        // non-admins shouldn’t update at all OR just skip
+        $sql = ""; 
+    }
+
+    if (!empty($sql)) {
+        $conn->query($sql);
+    }
+}
+
+$user_id = $_SESSION['user_id'];
+if (isset($_POST['request_borrow'])) {
+    $equipment_id = $_POST['equipment_id'];
+    $quantity = (int) $_POST['quantity'];
+    $user_id = $_SESSION['user_id'];
+    $start = $_POST['start_date'];
+    $end = $_POST['end_date'];
+
+    $stmt = $conn->prepare("INSERT INTO borrow_requests (user_id, equipment_id, start_date, end_date) VALUES (?,?,?,?)");
+    $stmt->bind_param("iiss", $user_id, $equipment_id, $start, $end);
+    $stmt->execute();
+    $stmt->close();
+}
+if ($_SESSION['role'] === 'admin' && isset($_GET['approve_id'])) {
+    $id = $_GET['approve_id'];
+    $conn->query("UPDATE borrow_requests SET status='Approved' WHERE id=$id");
+}
+
+if ($_SESSION['role'] === 'admin' && isset($_GET['reject_id'])) {
+    $id = $_GET['reject_id'];
+    $conn->query("UPDATE borrow_requests SET status='Rejected' WHERE id=$id");
+}
+// Handle Add Equipment (Admin only)
+if ($_SESSION['role'] === 'admin' && isset($_POST['add_equipment'])) {
+    $name = $conn->real_escape_string($_POST['name']);
+    $desc = $conn->real_escape_string($_POST['description']);
+    $qty = intval($_POST['quantity']);
+    $conn->query("INSERT INTO equipment (name, description, quantity, available) VALUES ('$name','$desc',$qty,$qty)");
+}
+
+// Handle Borrow Request (Staff only)
+if ($_SESSION['role'] === 'staff' && isset($_GET['borrow_id'])) {
+    $eq_id = intval($_GET['borrow_id']);
+    $conn->query("INSERT INTO equipment_borrow (equipment_id, user_id) VALUES ($eq_id, $user_id)");
+    $conn->query("UPDATE equipment SET available = available - 1 WHERE id=$eq_id AND available > 0");
+}
+// Staff: Cancel Borrow
+if ($_SESSION['role'] === 'staff' && isset($_POST['cancel_borrow'])) {
+    $borrow_id = intval($_POST['borrow_id']);
+
+    // Only allow cancel if still pending
+    $res = $conn->query("SELECT equipment_id, status FROM equipment_borrow WHERE id=$borrow_id AND user_id=$user_id");
+    if ($res && $row = $res->fetch_assoc()) {
+        if ($row['status'] === 'Pending') {
+            $eq_id = $row['equipment_id'];
+
+            // Update borrow status to Cancelled
+            $conn->query("UPDATE equipment_borrow SET status='Cancelled' WHERE id=$borrow_id");
+
+            // Restore equipment availability
+            $conn->query("UPDATE equipment SET available = available + 1 WHERE id=$eq_id");
+
+            // (Optional) notify admin → you could insert into a notifications table here
+        }
+    }
+}
+// Fetch equipment list
+$equipmentList = $conn->query("SELECT * FROM equipment");
+
+// Fetch staff borrow list
+if ($_SESSION['role'] === 'admin') {
+    $stmt = $conn->prepare("SELECT eb.id, e.name, eb.borrow_date, eb.status 
+                            FROM equipment_borrow eb 
+                            JOIN equipment e ON eb.equipment_id = e.id 
+                            WHERE eb.user_id = ?");
+    $stmt->bind_param("i", $user_id); // "i" = integer
+    $stmt->execute();
+    $myBorrows = $stmt->get_result();
+}
+// Admin: Update Borrow Status
+if ($_SESSION['role'] === 'admin' && isset($_POST['update_borrow_status'])) {
+    $borrow_id = intval($_POST['borrow_id']);
+    $status = $conn->real_escape_string($_POST['status']);
+
+    // Update status
+    $conn->query("UPDATE equipment_borrow SET status='$status' WHERE id=$borrow_id");
+
+    // If returned, restore availability
+    if ($status === 'Returned') {
+        $conn->query("UPDATE equipment 
+                      SET available = available + 1 
+                      WHERE id = (SELECT equipment_id FROM equipment_borrow WHERE id=$borrow_id)");
+    }
+}
+?>
